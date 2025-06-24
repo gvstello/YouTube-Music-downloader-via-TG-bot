@@ -3,21 +3,32 @@ import shutil
 
 from telegram import Update
 from telegram.ext import CallbackContext
+from urllib.parse import urlparse
+
 from services.cache import save_to_cache
 from services.downloader import download_audio, download_playlist
 
 
 downloaded_songs = set()
 
-def set_cache_reference(cache):                                                                                         #
+def set_cache_reference(cache):                                                                                         #Сравнение с тем что уже скачивали
     global downloaded_songs
     downloaded_songs = cache
+
+def is_youtube_url(url):                                                                                                #Парсит домен на наличие корректной ссылки
+    try:
+        domain = urlparse(url).netloc.lower()
+        return any(
+            d in domain for d in ('youtube.com', 'youtu.be', 'music.youtube.com')
+        )
+    except:
+        return False
 
 def handle_message(update: Update, context: CallbackContext):
     message_text = update.message.text.strip()
     print(f'[DEBUG] Message text: {message_text}')
 
-    if any(domain in message_text for domain in ['https://youtube.com', 'https://youtu.be', 'https://music.youtube.com']):
+    if not is_youtube_url(message_text):
         update.message.reply_text('Let me YouTube link')
         return
 
@@ -34,10 +45,10 @@ def handle_message(update: Update, context: CallbackContext):
         for video in videos:
             video_url = video['url']
             if video_url in downloaded_songs:
-                update.message.reply_text("Skipping {video['title']}")
+                update.message.reply_text(f"Skipping {video['title']}")
                 continue
 
-            message = update.message.reply_text("Downloading {video['title']}")
+            message = update.message.reply_text(f"Downloading {video['title']}")
             audio_path, title = download_audio(video_url)
             if audio_path:
                 with open(audio_path, 'rb') as audio:
@@ -69,20 +80,20 @@ def handle_message(update: Update, context: CallbackContext):
         return
 
     status = update.message.reply_text("⏳ Downloading...")
-    audio_path, title = download_audio(message_text)                                                                #Вывод пути и названия
+    audio_path, title = download_audio(message_text)                                                                    #Вывод пути и названия
 
     if audio_path:
         with open(audio_path, 'rb') as audio:
             ext = os.path.splitext(audio_path)[1] or '.mp3'
-            update.message.reply_voice(                                                                             #Отправляет как голосовое
+            update.message.reply_voice(                                                                                 #Отправляет как голосовое
                 voice=audio,
                 caption=f"{title}",
                 filename=f"{title}{ext}"
             )
 
-        status.edit_text("✅ Done.")                                                                                #Обновление статуса(Эдит сообщения)
+        status.edit_text("✅ Done.")                                                                                    #Обновление статуса(Эдит сообщения)
 
-        try:                                                                                                        #Чистим времянку
+        try:                                                                                                            #Чистим времянку
             os.remove(audio_path)
             shutil.rmtree(os.path.dirname(audio_path))
         except Exception as e:
